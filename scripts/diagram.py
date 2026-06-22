@@ -1,21 +1,15 @@
 #!/usr/bin/env python3
 """
-diagram.py — illustrative QM/MM diagrams (concept + binding pocket cartoon)
-
-These are schematic, not data plots: they explain *what a QM/MM calculation
-is* and *what it looks like inside a binding pocket*, independent of any
-particular protein or ligand. Useful as figures in a README, report, or
-presentation.
+diagram.py — professional QM/MM illustrative diagrams with rich dark backgrounds
 
 Produces two PNGs:
   1. qmmm_concept.png    — QM region embedded in an MM point-charge field
-  2. binding_pocket.png  — a generic ligand H-bonding to a residue inside
-                            a hydrophobic pocket, with a charge-shift callout
+  2. binding_pocket.png  — a cartoon ligand H-bonding inside a binding pocket
 
 Usage:
     python scripts/diagram.py
     python scripts/diagram.py --out-dir docs/images
-    python scripts/diagram.py --residue "Gln102" --ligand-label "Ligand" \\
+    python scripts/diagram.py --residue "Gln102" --ligand-label "JZ4" \
         --delta-q -0.028 --distance 2.8
 """
 
@@ -23,45 +17,65 @@ import argparse
 import os
 
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as pe
 import numpy as np
 from matplotlib.lines import Line2D
-from matplotlib.patches import Circle, FancyBboxPatch
+from matplotlib.patches import Circle, FancyBboxPatch, FancyArrowPatch, Arc
+from matplotlib.colors import LinearSegmentedColormap
 
-# -----------------------------------------------------------------------------
-# Shared visual style (matches visualize_results.py)
-# -----------------------------------------------------------------------------
-BG = "#0f1419"
-PANEL_BG = "#161b22"
-GRID = "#2a313c"
-TEXT = "#e6edf3"
-SUBTEXT = "#8b949e"
-ACCENT_NEG = "#ef5350"
-ACCENT_POS = "#42a5f5"
-ACCENT_HIGHLIGHT = "#ffca28"
-ACCENT_GREEN = "#66bb6a"
+# ── colour palette (white background, professional/print style) ───────────────
+BG          = "#ffffff"
+PANEL_BG    = "#f5f7fa"
+CARD_BG     = "#ffffff"
+GRID        = "#e7eaf0"
+BORDER      = "#9aa7ba"
+TEXT        = "#1f2937"
+SUBTEXT     = "#5b6776"
+MUTED       = "#8a96a8"
+GREEN       = "#1f9d6b"
+GREEN_DIM   = "#2fae7c"
+BLUE        = "#2f6fed"
+BLUE_DIM    = "#1d4fc0"
+RED         = "#dc3a56"
+YELLOW      = "#c9790f"
+PURPLE      = "#7c4fd1"
+CYAN        = "#0e8fa3"
+WHITE       = "#ffffff"
 
-plt.rcParams.update({
-    "figure.facecolor": BG,
-    "axes.facecolor": BG,
-    "text.color": TEXT,
-    "font.size": 10.5,
-    "font.family": "DejaVu Sans",
-})
+GLOW_SHADOW = [pe.withStroke(linewidth=5, foreground="#1f9d6b20")]
 
 
-def parse_args():
-    p = argparse.ArgumentParser(description="Generate illustrative QM/MM diagrams.")
-    p.add_argument("--out-dir", default="docs/images", help="Where to save the PNGs")
-    p.add_argument("--residue", default="Residue X",
-                   help="Label for the H-bonding residue in the pocket cartoon")
-    p.add_argument("--ligand-label", default="Ligand",
-                   help="Label for the ligand in the pocket cartoon")
-    p.add_argument("--distance", type=float, default=2.8,
-                   help="H-bond distance in Angstrom, shown on the cartoon")
-    p.add_argument("--delta-q", type=float, default=-0.028,
-                   help="Example charge shift (e) to annotate, gas -> environment")
-    p.add_argument("--show", action="store_true")
-    return p.parse_args()
+def _fig(w, h):
+    fig, ax = plt.subplots(figsize=(w, h), facecolor=BG)
+    ax.set_facecolor(BG)
+    ax.axis("off")
+    return fig, ax
+
+
+def _gradient_circle(ax, cx, cy, r, color_inner, color_outer, zorder=1, steps=40):
+    """Draw a filled circle with a radial gradient using concentric rings."""
+    for i in range(steps, 0, -1):
+        frac = i / steps
+        # blend inner -> outer
+        ri = int(int(color_inner[1:3], 16) * frac + int(color_outer[1:3], 16) * (1 - frac))
+        gi = int(int(color_inner[3:5], 16) * frac + int(color_outer[3:5], 16) * (1 - frac))
+        bi = int(int(color_inner[5:7], 16) * frac + int(color_outer[5:7], 16) * (1 - frac))
+        col = f"#{ri:02x}{gi:02x}{bi:02x}"
+        c = Circle((cx, cy), r * frac, facecolor=col, edgecolor="none",
+                   zorder=zorder, alpha=0.7)
+        ax.add_patch(c)
+
+
+def _glow_circle(ax, cx, cy, r, color, linewidth=2.0, zorder=5, alpha_halo=0.18, n_halo=4):
+    """Draw a circle with a soft glowing halo."""
+    for i in range(n_halo, 0, -1):
+        c = Circle((cx, cy), r + i * 0.12, facecolor="none",
+                   edgecolor=color, linewidth=linewidth * 0.5,
+                   alpha=alpha_halo / i, zorder=zorder - 1)
+        ax.add_patch(c)
+    c = Circle((cx, cy), r, facecolor="none", edgecolor=color,
+               linewidth=linewidth, zorder=zorder)
+    ax.add_patch(c)
 
 
 # =============================================================================
@@ -69,94 +83,144 @@ def parse_args():
 # =============================================================================
 
 def draw_qmmm_concept(out_path, show=False):
-    fig, ax = plt.subplots(figsize=(9.0, 9.0))
-    ax.set_xlim(0, 10)
-    ax.set_ylim(0, 9.2)
+    fig, ax = _fig(11, 10)
+    ax.set_xlim(0, 11)
+    ax.set_ylim(0, 10)
     ax.set_aspect("equal")
-    ax.axis("off")
 
-    ax.text(0.3, 8.7, "QM/MM: Two Levels of Theory, One System",
-            fontsize=15, fontweight="bold", color=TEXT)
-    ax.text(0.3, 8.25, "The part you care about is solved exactly; everything else is a fixed electric field",
-            fontsize=9.5, color=SUBTEXT)
+    # ── background grid (subtle) ───────────────────────────────────────────
+    for x in np.arange(0, 11, 0.8):
+        ax.axvline(x, color=GRID, lw=0.3, alpha=0.4)
+    for y in np.arange(0, 10, 0.8):
+        ax.axhline(y, color=GRID, lw=0.3, alpha=0.4)
 
-    cx, cy = 5.0, 4.5
+    # ── title block ───────────────────────────────────────────────────────
+    ax.text(0.5, 9.6, "QM/MM: Two Levels of Theory, One System",
+            fontsize=17, fontweight="bold", color=TEXT,
+            path_effects=[pe.withStroke(linewidth=3, foreground=BG)])
+    ax.text(0.5, 9.18,
+            "The QM region's wavefunction is solved inside the electric field of every MM atom.",
+            fontsize=10, color=SUBTEXT)
 
-    # Outer MM region (periodic box)
-    box = FancyBboxPatch((0.6, 0.6), 8.8, 6.6, boxstyle="round,pad=0,rounding_size=0.15",
-                          linewidth=1.4, edgecolor=GRID, facecolor=PANEL_BG, zorder=0)
+    cx, cy = 5.5, 4.7
+
+    # ── outer MM box ──────────────────────────────────────────────────────
+    box = FancyBboxPatch((0.35, 0.55), 10.3, 8.0,
+                          boxstyle="round,pad=0,rounding_size=0.25",
+                          linewidth=1.6, edgecolor=BORDER,
+                          facecolor=PANEL_BG, zorder=0)
     ax.add_patch(box)
-    ax.text(0.9, 6.95, "MM region — classical force field", fontsize=10, color=SUBTEXT,
-            style="italic")
+    # corner label
+    ax.text(0.6, 8.3, "MM  region", fontsize=9.5, color=SUBTEXT,
+            style="italic", alpha=0.8)
+    ax.text(0.6, 7.98, "Classical force field  ·  fixed point charges",
+            fontsize=8.2, color=MUTED, style="italic")
 
-    # scattered MM point charges (water / protein atoms)
-    rng = np.random.default_rng(7)
-    n_pts = 70
+    # ── scattered MM point charges ────────────────────────────────────────
+    rng = np.random.default_rng(42)
+    n_pts = 90
     pts = []
     while len(pts) < n_pts:
-        x = rng.uniform(1.1, 8.9)
-        y = rng.uniform(1.1, 6.8)
-        if np.hypot(x - cx, y - cy) > 2.15:
+        x = rng.uniform(0.7, 10.3)
+        y = rng.uniform(0.8, 8.3)
+        if np.hypot(x - cx, y - cy) > 2.5:
             pts.append((x, y))
-    pts = np.array(pts)
-    signs = rng.choice([-1, 1], size=len(pts), p=[0.5, 0.5])
-    colors = np.where(signs < 0, ACCENT_NEG, ACCENT_POS)
-    ax.scatter(pts[:, 0], pts[:, 1], s=26, c=colors, alpha=0.55, linewidths=0, zorder=1)
+    pts = np.array(pts[:n_pts])
+    signs = rng.choice([-1, 1], size=n_pts, p=[0.48, 0.52])
+    for (x, y), s in zip(pts, signs):
+        col = RED if s < 0 else BLUE
+        ax.scatter(x, y, s=35, c=col, alpha=0.55, linewidths=0, zorder=2)
+        symbol = "−" if s < 0 else "+"
+        ax.text(x, y, symbol, fontsize=6, color=col, ha="center", va="center",
+                fontweight="bold", alpha=0.9, zorder=3)
 
-    # faint field lines radiating from a few MM charges toward the QM region
-    field_sources = pts[rng.choice(len(pts), size=10, replace=False)]
+    # ── electric field lines from MM charges toward QM centre ─────────────
+    field_sources = pts[rng.choice(len(pts), size=14, replace=False)]
     for fx, fy in field_sources:
-        ax.annotate(
-            "", xy=(cx, cy), xytext=(fx, fy),
-            arrowprops=dict(arrowstyle="-", color=GRID, lw=0.7, alpha=0.6,
-                             connectionstyle="arc3,rad=0.05"),
-            zorder=1,
-        )
+        dx, dy = cx - fx, cy - fy
+        dist = np.hypot(dx, dy)
+        # stop arrow just outside the QM halo
+        ex = fx + dx * (dist - 2.55) / dist
+        ey = fy + dy * (dist - 2.55) / dist
+        ax.annotate("", xy=(ex, ey), xytext=(fx, fy),
+                    arrowprops=dict(arrowstyle="-|>", color=MUTED, lw=0.8,
+                                   mutation_scale=6, alpha=0.5),
+                    zorder=2)
 
-    # QM region circle
-    qm_circle = Circle((cx, cy), 1.95, facecolor="#0d2b1a", edgecolor=ACCENT_GREEN,
-                        linewidth=2.2, zorder=2)
-    ax.add_patch(qm_circle)
-    ax.text(cx, cy + 1.55, "QM region", fontsize=11, fontweight="bold",
-            color=ACCENT_GREEN, ha="center", zorder=3)
-    ax.text(cx, cy + 1.22, "(your ligand)", fontsize=8.5, color=SUBTEXT, ha="center", zorder=3)
+    # ── QM region — glowing green circle ──────────────────────────────────
+    # soft glow halos
+    for i in range(6, 0, -1):
+        c = Circle((cx, cy), 2.0 + i * 0.18, facecolor="none",
+                   edgecolor=GREEN, linewidth=1.0,
+                   alpha=0.06, zorder=3)
+        ax.add_patch(c)
+    # filled interior
+    qm_fill = Circle((cx, cy), 2.0, facecolor="#eafbf3", edgecolor=GREEN,
+                     linewidth=2.5, zorder=4)
+    ax.add_patch(qm_fill)
 
-    # small molecule sketch inside QM circle: a simple ring + substituent
-    mol_pts = {
-        "C1": (cx - 0.55, cy + 0.35), "C2": (cx + 0.05, cy + 0.55),
-        "C3": (cx + 0.55, cy + 0.15), "C4": (cx + 0.4, cy - 0.45),
-        "C5": (cx - 0.2, cy - 0.6), "C6": (cx - 0.65, cy - 0.2),
-    }
-    ring_order = ["C1", "C2", "C3", "C4", "C5", "C6", "C1"]
-    ring_xy = [mol_pts[k] for k in ring_order]
-    ax.plot([p[0] for p in ring_xy], [p[1] for p in ring_xy],
-            color=TEXT, lw=1.6, zorder=4)
-    for k, (x, y) in mol_pts.items():
-        ax.scatter(x, y, s=46, color="#3d3d3d", edgecolor=TEXT, linewidth=0.8, zorder=5)
-    ox, oy = cx - 1.05, cy + 0.55
-    ax.plot([mol_pts["C1"][0], ox], [mol_pts["C1"][1], oy], color=TEXT, lw=1.6, zorder=4)
-    ax.scatter(ox, oy, s=80, color=ACCENT_NEG, edgecolor=TEXT, linewidth=0.8, zorder=5)
-    ax.text(ox - 0.05, oy + 0.28, "O", fontsize=9, color=ACCENT_NEG, ha="center", fontweight="bold")
+    # ── small molecule inside QM (benzene-like ring + oxygen) ─────────────
+    def ring_vertex(k, cx=cx, cy=cy, r=0.75, offset_y=0.05):
+        angle = np.pi / 2 + k * (2 * np.pi / 6)
+        return cx + r * np.cos(angle), cy + r * np.sin(angle) + offset_y
 
-    # Schrodinger callout
-    ax.text(cx, cy - 1.55, r"$\hat{H}\Psi = E\Psi$  solved here", fontsize=9.5,
-            color=ACCENT_GREEN, ha="center", style="italic", zorder=3)
+    ring = [ring_vertex(k) for k in range(6)]
+    # bonds
+    for i in range(6):
+        x0, y0 = ring[i]
+        x1, y1 = ring[(i + 1) % 6]
+        ax.plot([x0, x1], [y0, y1], color=TEXT, lw=2.0, zorder=6)
+    # alternate double bonds (inner offset)
+    for i in [0, 2, 4]:
+        x0, y0 = ring[i]
+        x1, y1 = ring[(i + 1) % 6]
+        mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+        dx, dy = -(my - cy) * 0.12, (mx - cx) * 0.12
+        ax.plot([x0 + dx * 0.5, x1 + dx * 0.5],
+                [y0 + dy * 0.5, y1 + dy * 0.5], color=TEXT, lw=1.0, alpha=0.6, zorder=6)
+    # atoms
+    for x, y in ring:
+        ax.scatter(x, y, s=55, color=CARD_BG, edgecolor=TEXT, linewidth=1.2, zorder=7)
+    # oxygen substituent
+    ox, oy = cx - 1.45, cy + 0.62
+    ax.plot([ring[0][0], ox], [ring[0][1], oy], color=TEXT, lw=2.0, zorder=6)
+    _glow_circle(ax, ox, oy, 0.27, RED, linewidth=1.5, zorder=8, alpha_halo=0.25)
+    ax.add_patch(Circle((ox, oy), 0.27, facecolor=RED, edgecolor="none", zorder=8, alpha=0.9))
+    ax.text(ox, oy, "O", fontsize=9, color=WHITE, ha="center", va="center",
+            fontweight="bold", zorder=9)
 
-    # Clean legend using proxy handles
+    # ── Hamiltonian equation ───────────────────────────────────────────────
+    ax.text(cx, cy - 1.52, r"$\hat{H}_{\mathrm{eff}}\,\Psi = E\,\Psi$",
+            fontsize=13, color=GREEN, ha="center", style="italic", zorder=6,
+            path_effects=[pe.withStroke(linewidth=4, foreground="#eafbf3")])
+
+    # ── QM label ──────────────────────────────────────────────────────────
+    ax.text(cx, cy + 1.62, "QM  region", fontsize=12, fontweight="bold",
+            color=GREEN, ha="center", zorder=6)
+    ax.text(cx, cy + 1.18, "wavefunction solved by DFT / ab initio",
+            fontsize=8.0, color=GREEN_DIM, ha="center", zorder=6)
+
+    # ── legend ────────────────────────────────────────────────────────────
     legend_handles = [
-        Line2D([0], [0], marker="o", color="none", markerfacecolor=ACCENT_GREEN,
-               markeredgecolor=ACCENT_GREEN, markersize=10,
-               label="QM region — wavefunction solved by ab initio / DFT"),
-        Line2D([0], [0], marker="o", color="none", markerfacecolor=ACCENT_NEG,
-               markeredgecolor="none", markersize=9, label="MM point charge (negative)"),
-        Line2D([0], [0], marker="o", color="none", markerfacecolor=ACCENT_POS,
-               markeredgecolor="none", markersize=9, label="MM point charge (positive)"),
+        Line2D([0], [0], marker="o", color="none",
+               markerfacecolor=GREEN, markeredgecolor=GREEN, markersize=11,
+               label="QM region — electron density solved quantum-mechanically"),
+        Line2D([0], [0], marker="o", color="none",
+               markerfacecolor=RED, markeredgecolor="none", markersize=9,
+               label="MM point charge (negative)"),
+        Line2D([0], [0], marker="o", color="none",
+               markerfacecolor=BLUE, markeredgecolor="none", markersize=9,
+               label="MM point charge (positive)"),
+        Line2D([0], [0], color=MUTED, lw=1.2,
+               marker=">", markersize=5,
+               label="Electric field contribution to Hamiltonian"),
     ]
-    ax.legend(handles=legend_handles, loc="lower center", bbox_to_anchor=(0.5, -0.13),
-              ncol=1, frameon=False, fontsize=9.2, labelcolor=SUBTEXT,
-              handletextpad=0.6, borderaxespad=0)
+    ax.legend(handles=legend_handles, loc="lower center",
+              bbox_to_anchor=(0.5, -0.02), ncol=2, frameon=False,
+              fontsize=9, labelcolor=SUBTEXT,
+              handletextpad=0.7, columnspacing=1.4)
 
-    fig.savefig(out_path, dpi=180, facecolor=BG, bbox_inches="tight")
+    fig.savefig(out_path, dpi=200, facecolor=BG, bbox_inches="tight")
     print(f"Saved -> {out_path}")
     if show:
         plt.show()
@@ -164,120 +228,236 @@ def draw_qmmm_concept(out_path, show=False):
 
 
 # =============================================================================
-# Diagram 2 — generic binding-pocket cartoon
+# Diagram 2 — binding-pocket cartoon
 # =============================================================================
 
 def draw_binding_pocket(out_path, residue_label, ligand_label, distance, delta_q, show=False):
-    fig, ax = plt.subplots(figsize=(9.8, 9.0))
-    ax.set_xlim(0, 11.6)
-    ax.set_ylim(0, 10.7)
+    fig, ax = _fig(13, 10.5)
+    ax.set_xlim(0, 13)
+    ax.set_ylim(0, 10.5)
     ax.set_aspect("equal")
-    ax.axis("off")
 
-    ax.text(0.3, 10.25, "Inside the Binding Pocket",
-            fontsize=15, fontweight="bold", color=TEXT)
-    ax.text(0.3, 9.72,
-            "A generic H-bond between a ligand and a pocket residue — the kind of\n"
-            "interaction QM/MM lets you quantify, atom by atom",
-            fontsize=9.3, color=SUBTEXT, va="top")
+    # background grid
+    for x in np.arange(0, 13, 0.8):
+        ax.axvline(x, color=GRID, lw=0.3, alpha=0.35)
+    for y in np.arange(0, 10.5, 0.8):
+        ax.axhline(y, color=GRID, lw=0.3, alpha=0.35)
 
-    pocket_cx, pocket_cy, pocket_r = 5.3, 4.3, 3.55
-    pocket = Circle((pocket_cx, pocket_cy), pocket_r, facecolor=PANEL_BG,
-                     edgecolor=GRID, linewidth=1.5, linestyle=(0, (6, 4)), zorder=0)
+    # ── title ─────────────────────────────────────────────────────────────
+    ax.text(0.5, 10.1, "Inside the Binding Pocket",
+            fontsize=17, fontweight="bold", color=TEXT,
+            path_effects=[pe.withStroke(linewidth=3, foreground=BG)])
+    ax.text(0.5, 9.62,
+            "QM/MM captures how the ligand's electron density responds to its protein environment — "
+            "atom by atom.",
+            fontsize=9.5, color=SUBTEXT)
+
+    # ── pocket boundary ────────────────────────────────────────────────────
+    pcx, pcy, pr = 5.5, 4.5, 4.0
+    # soft glow for pocket
+    for i in range(5, 0, -1):
+        c = Circle((pcx, pcy), pr + i * 0.15, facecolor="none",
+                   edgecolor=BORDER, linewidth=1.0, alpha=0.07 * i, zorder=0)
+        ax.add_patch(c)
+    pocket = Circle((pcx, pcy), pr, facecolor=PANEL_BG,
+                    edgecolor=BORDER, linewidth=1.8,
+                    linestyle=(0, (7, 4)), zorder=1)
     ax.add_patch(pocket)
-    ax.text(pocket_cx, pocket_cy + pocket_r + 0.35, "hydrophobic pocket wall",
-            fontsize=8.5, color=SUBTEXT, ha="center", style="italic")
+    ax.text(pcx, pcy + pr + 0.42, "hydrophobic pocket",
+            fontsize=9, color=SUBTEXT, ha="center", style="italic")
 
-    # hydrophobic residues lining the lower half of the pocket (decorative, generic labels)
-    hydrophobic_positions = [
-        (pocket_cx - 2.5, pocket_cy - 1.15, "Hydrophobic\nresidue"),
-        (pocket_cx - 1.3, pocket_cy - 2.65, "Hydrophobic\nresidue"),
-        (pocket_cx + 1.35, pocket_cy - 2.65, "Hydrophobic\nresidue"),
-        (pocket_cx + 2.5, pocket_cy - 1.15, "Hydrophobic\nresidue"),
+    # ── hydrophobic residues lining the pocket ─────────────────────────────
+    hpos = [
+        (pcx - 3.0, pcy - 0.9,  "Val"),
+        (pcx - 1.6, pcy - 3.2,  "Leu"),
+        (pcx + 0.1, pcy - 3.7,  "Ile"),
+        (pcx + 1.8, pcy - 3.1,  "Phe"),
+        (pcx + 3.0, pcy - 0.8,  "Trp"),
+        (pcx + 2.5, pcy + 2.2,  "Met"),
+        (pcx - 2.4, pcy + 2.3,  "Ala"),
     ]
-    for x, y, label in hydrophobic_positions:
-        circ = Circle((x, y), 0.48, facecolor="#163a24", edgecolor=ACCENT_GREEN,
-                       linewidth=1.4, zorder=2)
-        ax.add_patch(circ)
-        ax.text(x, y - 0.78, label, fontsize=7.2, color=SUBTEXT, ha="center", va="top")
+    for hx, hy, hlabel in hpos:
+        # glow
+        for i in range(4, 0, -1):
+            c = Circle((hx, hy), 0.52 + i * 0.08, facecolor="none",
+                       edgecolor=GREEN_DIM, linewidth=0.8, alpha=0.05 * i, zorder=2)
+            ax.add_patch(c)
+        c = Circle((hx, hy), 0.52, facecolor="#eafbf3",
+                   edgecolor=GREEN_DIM, linewidth=1.5, zorder=3)
+        ax.add_patch(c)
+        ax.text(hx, hy, hlabel[:1], fontsize=8.5, color=GREEN,
+                ha="center", va="center", fontweight="bold", zorder=4)
+        ax.text(hx, hy - 0.78, hlabel, fontsize=7.5, color=SUBTEXT,
+                ha="center", va="top", zorder=4)
 
-    # ligand (simple ring + hydrophobic tail), lower-center of the pocket,
-    # tail pointing down into the hydrophobic residues, head pointing up
-    lig_cx, lig_cy = pocket_cx + 0.1, pocket_cy - 0.95
-    mol_pts = {
-        "C1": (lig_cx - 0.5, lig_cy + 0.32), "C2": (lig_cx + 0.05, lig_cy + 0.5),
-        "C3": (lig_cx + 0.5, lig_cy + 0.13), "C4": (lig_cx + 0.36, lig_cy - 0.4),
-        "C5": (lig_cx - 0.18, lig_cy - 0.55), "C6": (lig_cx - 0.58, lig_cy - 0.18),
-    }
-    ring_order = ["C1", "C2", "C3", "C4", "C5", "C6", "C1"]
-    ring_xy = [mol_pts[k] for k in ring_order]
-    ax.plot([p[0] for p in ring_xy], [p[1] for p in ring_xy], color=TEXT, lw=1.8, zorder=5)
-    for k, (x, y) in mol_pts.items():
-        ax.scatter(x, y, s=42, color="#3d3d3d", edgecolor=TEXT, linewidth=0.8, zorder=6)
+    # ── ligand ─────────────────────────────────────────────────────────────
+    lig_cx, lig_cy = pcx + 0.1, pcy - 0.7
+    def lring(k, r=0.72):
+        a = np.pi / 2 + k * (2 * np.pi / 6)
+        return lig_cx + r * np.cos(a), lig_cy + r * np.sin(a)
 
-    chain_pts = [mol_pts["C4"], (mol_pts["C4"][0] + 0.3, mol_pts["C4"][1] - 0.7),
-                 (mol_pts["C4"][0] + 0.05, mol_pts["C4"][1] - 1.4)]
-    ax.plot([p[0] for p in chain_pts], [p[1] for p in chain_pts], color=TEXT, lw=1.8, zorder=5)
-    for x, y in chain_pts[1:]:
-        ax.scatter(x, y, s=42, color="#3d3d3d", edgecolor=TEXT, linewidth=0.8, zorder=6)
+    lrpts = [lring(k) for k in range(6)]
+    for i in range(6):
+        x0, y0 = lrpts[i]; x1, y1 = lrpts[(i + 1) % 6]
+        ax.plot([x0, x1], [y0, y1], color=TEXT, lw=2.2, zorder=6)
+    for i in [0, 2, 4]:
+        x0, y0 = lrpts[i]; x1, y1 = lrpts[(i + 1) % 6]
+        mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+        dx2 = -(my - lig_cy) * 0.11; dy2 = (mx - lig_cx) * 0.11
+        ax.plot([x0 + dx2 * 0.5, x1 + dx2 * 0.5],
+                [y0 + dy2 * 0.5, y1 + dy2 * 0.5],
+                color=TEXT, lw=1.0, alpha=0.5, zorder=6)
+    for x, y in lrpts:
+        ax.scatter(x, y, s=50, color=CARD_BG, edgecolor=TEXT, linewidth=1.1, zorder=7)
 
-    # hydroxyl oxygen pointing straight up toward the H-bonding residue
-    ox, oy = mol_pts["C1"][0] - 0.05, mol_pts["C1"][1] + 0.85
-    ax.plot([mol_pts["C1"][0], ox], [mol_pts["C1"][1], oy], color=TEXT, lw=1.8, zorder=5)
-    o_circle = Circle((ox, oy), 0.21, facecolor=ACCENT_NEG, edgecolor=TEXT,
-                       linewidth=1.0, zorder=7)
-    ax.add_patch(o_circle)
-    ax.text(ox, oy, "O", fontsize=9, color="white", ha="center", va="center",
+    # hydrophobic tail
+    tail = [lrpts[3],
+            (lrpts[3][0] + 0.35, lrpts[3][1] - 0.65),
+            (lrpts[3][0] + 0.08, lrpts[3][1] - 1.35)]
+    ax.plot([p[0] for p in tail], [p[1] for p in tail],
+            color=TEXT, lw=2.2, zorder=6)
+    for x, y in tail[1:]:
+        ax.scatter(x, y, s=50, color=CARD_BG, edgecolor=TEXT, linewidth=1.1, zorder=7)
+
+    # hydroxyl oxygen
+    ox, oy = lrpts[0][0] - 0.04, lrpts[0][1] + 0.98
+    ax.plot([lrpts[0][0], ox], [lrpts[0][1], oy], color=TEXT, lw=2.2, zorder=6)
+    for i in range(5, 0, -1):
+        c = Circle((ox, oy), 0.24 + i * 0.07, facecolor="none",
+                   edgecolor=RED, linewidth=0.8, alpha=0.07 * i, zorder=7)
+        ax.add_patch(c)
+    ax.add_patch(Circle((ox, oy), 0.24, facecolor=RED, edgecolor=TEXT,
+                        linewidth=1.2, zorder=8))
+    ax.text(ox, oy, "O", fontsize=9, color=WHITE, ha="center", va="center",
+            fontweight="bold", zorder=9)
+
+    # ligand label
+    ax.text(lig_cx, lig_cy - 1.95, ligand_label, fontsize=11, fontweight="bold",
+            color=YELLOW, ha="center", zorder=6)
+    ax.text(lig_cx, lig_cy - 2.30, "QM region", fontsize=8.5, color=SUBTEXT,
+            ha="center", zorder=6)
+
+    # ── H-bonding residue ──────────────────────────────────────────────────
+    res_x, res_y = ox, oy + 2.25
+    for i in range(5, 0, -1):
+        c = Circle((res_x, res_y), 0.55 + i * 0.08, facecolor="none",
+                   edgecolor=BLUE, linewidth=0.8, alpha=0.06 * i, zorder=6)
+        ax.add_patch(c)
+    ax.add_patch(Circle((res_x, res_y), 0.55, facecolor=BLUE_DIM,
+                        edgecolor=BLUE, linewidth=2.0, zorder=7))
+    ax.text(res_x, res_y + 0.10, "N", fontsize=11, color=WHITE, ha="center",
             fontweight="bold", zorder=8)
+    ax.text(res_x, res_y - 0.22, residue_label, fontsize=6.5, color=CYAN,
+            ha="center", zorder=8)
 
-    ax.text(lig_cx, lig_cy - 1.95, ligand_label, fontsize=10.5, fontweight="bold",
-            color=ACCENT_HIGHLIGHT, ha="center")
-    ax.text(lig_cx, lig_cy - 2.28, "(QM region)", fontsize=8, color=SUBTEXT, ha="center")
+    # H atom
+    h_x, h_y = res_x, res_y - 1.0
+    ax.plot([res_x, h_x], [res_y - 0.55, h_y], color=TEXT, lw=1.6, zorder=7)
+    ax.add_patch(Circle((h_x, h_y), 0.16, facecolor="#cccccc",
+                        edgecolor=TEXT, linewidth=1.0, zorder=8))
+    ax.text(h_x + 0.32, h_y, "H", fontsize=8.5, color=TEXT, ha="left", va="center")
 
-    # H-bonding residue, directly above the oxygen with clear vertical separation
-    res_x, res_y = ox, oy + 2.0
-    res_circle = Circle((res_x, res_y), 0.5, facecolor="#0d2440", edgecolor=ACCENT_POS,
-                         linewidth=1.6, zorder=7)
-    ax.add_patch(res_circle)
-    ax.text(res_x, res_y + 0.12, "N", fontsize=10, color="white", ha="center",
-            fontweight="bold", zorder=8)
-    ax.text(res_x, res_y - 0.18, residue_label, fontsize=7.0, color="white", ha="center", zorder=8)
+    # H-bond dashed line
+    ax.plot([h_x, ox], [h_y, oy + 0.24], color=YELLOW, lw=2.0,
+            linestyle=(0, (5, 3.5)), zorder=6)
+    mid_x, mid_y = (h_x + ox) / 2 + 0.55, (h_y + oy) / 2
+    hbbox = dict(boxstyle="round,pad=0.35", facecolor=CARD_BG,
+                 edgecolor=YELLOW, linewidth=1.2)
+    ax.text(mid_x, mid_y, f"H-bond\n{distance:.1f} Å",
+            fontsize=9, color=YELLOW, ha="left", va="center",
+            fontweight="bold", bbox=hbbox, zorder=9)
 
-    # H attached to the residue, hanging down toward the oxygen
-    h_x, h_y = res_x, res_y - 0.85
-    ax.plot([res_x, h_x], [res_y - 0.5, h_y], color="white", lw=1.4, zorder=6)
-    ax.scatter(h_x, h_y, s=55, color="#cccccc", edgecolor=TEXT, linewidth=0.8, zorder=7)
-    ax.text(h_x + 0.28, h_y, "H", fontsize=8, color=TEXT, ha="left", va="center")
-
-    # H-bond dashed line from H down to O; label offset to the right, clear of both atoms
-    ax.plot([h_x, ox], [h_y, oy + 0.21], color=ACCENT_HIGHLIGHT, lw=1.6,
-            linestyle=(0, (5, 4)), zorder=6)
-    mid_x, mid_y = (h_x + ox) / 2, (h_y + oy) / 2
-    ax.text(mid_x + 0.45, mid_y, f"H-bond\n{distance:.1f} \u00c5", fontsize=8.6,
-            color=ACCENT_HIGHLIGHT, ha="left", va="center", fontweight="bold",
-            bbox=dict(boxstyle="round,pad=0.3", facecolor=BG, edgecolor=ACCENT_HIGHLIGHT,
-                      linewidth=0.8))
-
-    # charge-shift callout panel, top-right corner, clear of the pocket circle
-    panel = FancyBboxPatch((8.85, 6.55), 2.55, 2.85, boxstyle="round,pad=0.08,rounding_size=0.12",
-                            facecolor=PANEL_BG, edgecolor=GRID, linewidth=1.2, zorder=9)
+    # ── charge-shift info panel (right side) ───────────────────────────────
+    px0, py0, pw, ph = 9.55, 5.35, 3.05, 4.0
+    panel = FancyBboxPatch((px0, py0), pw, ph,
+                            boxstyle="round,pad=0.12,rounding_size=0.18",
+                            facecolor=CARD_BG, edgecolor=BORDER,
+                            linewidth=1.6, zorder=9)
     ax.add_patch(panel)
-    px = 9.08
-    ax.text(px, 9.0, "What QM/MM\ncaptures", fontsize=9.5, fontweight="bold",
-            color=TEXT, zorder=10, va="top")
-    ax.text(px, 8.25, "O charge shifts by", fontsize=8.3, color=SUBTEXT, zorder=10)
-    sign = "more negative" if delta_q < 0 else "more positive"
-    ax.text(px, 7.78, f"\u0394q = {delta_q:+.3f} e", fontsize=12.5, color=ACCENT_HIGHLIGHT,
-            fontweight="bold", family="monospace", zorder=10)
-    ax.text(px, 7.38, f"({sign} vs.\ngas phase)", fontsize=7.8, color=SUBTEXT, zorder=10, va="top")
-    ax.text(px, 6.78, "A fixed-charge force\nfield cannot reproduce\nthis.",
-            fontsize=7.4, color=SUBTEXT, va="top", zorder=10)
 
-    fig.savefig(out_path, dpi=180, facecolor=BG, bbox_inches="tight")
+    # panel title
+    ax.text(px0 + 0.18, py0 + ph - 0.22, "What QM/MM Captures",
+            fontsize=10.5, fontweight="bold", color=TEXT, va="top", zorder=10)
+    ax.axhline(py0 + ph - 0.60, xmin=(px0) / 13, xmax=(px0 + pw) / 13,
+               color=BORDER, lw=1.0, zorder=10)
+
+    sign_str = "more negative" if delta_q < 0 else "more positive"
+    lines = [
+        (0.45, GREEN,  "✓  Polarization effects"),
+        (0.22, SUBTEXT, "Classical MM cannot capture\ncharge redistribution"),
+    ]
+    y_cursor = py0 + ph - 0.82
+    for txt, col, content in lines:
+        ax.text(px0 + 0.18, y_cursor, content, fontsize=8.5, color=col,
+                va="top", zorder=10)
+        y_cursor -= 0.55
+
+    # big delta-q display
+    ax.text(px0 + 0.18, y_cursor - 0.1, "O atom charge shift:", fontsize=8.5,
+            color=SUBTEXT, va="top", zorder=10)
+    ax.text(px0 + pw / 2, y_cursor - 0.72, f"Δq = {delta_q:+.3f} e",
+            fontsize=16, color=YELLOW, ha="center", fontweight="bold",
+            family="monospace", zorder=10,
+            path_effects=[pe.withStroke(linewidth=4, foreground=CARD_BG)])
+    ax.text(px0 + pw / 2, y_cursor - 1.25, f"({sign_str}\nvs. gas phase)",
+            fontsize=8, color=SUBTEXT, ha="center", va="top", zorder=10)
+
+    # mini bar chart inside panel
+    bar_y = py0 + 0.45
+    bar_h = 0.36
+    bar_vals = [0.0, delta_q]
+    bar_cols = [MUTED, YELLOW]
+    bar_labels = ["gas phase", "in pocket"]
+    bw = 0.6
+    xs = [px0 + 0.55, px0 + 1.65]
+    for bx, bv, bc, bl in zip(xs, bar_vals, bar_cols, bar_labels):
+        height = abs(bv) * 4.5 + 0.05
+        by = bar_y
+        ax.bar(bx, height if bv >= 0 else -height, width=bw,
+               bottom=bar_y, color=bc, alpha=0.85, zorder=10)
+        ax.text(bx, by - 0.25, bl, fontsize=7, color=SUBTEXT,
+                ha="center", va="top", zorder=10)
+    ax.axhline(bar_y, xmin=px0 / 13, xmax=(px0 + pw) / 13,
+               color=MUTED, lw=0.8, zorder=10)
+
+    # ── legend bottom ──────────────────────────────────────────────────────
+    legend_handles = [
+        Line2D([0], [0], marker="o", color="none",
+               markerfacecolor=GREEN_DIM, markeredgecolor=GREEN_DIM, markersize=10,
+               label="Hydrophobic pocket residues (MM region)"),
+        Line2D([0], [0], marker="o", color="none",
+               markerfacecolor=BLUE, markeredgecolor=BLUE, markersize=10,
+               label="H-bond donor residue (MM)"),
+        Line2D([0], [0], marker="o", color="none",
+               markerfacecolor=RED, markeredgecolor="none", markersize=10,
+               label="Electronegative atom (QM region)"),
+        Line2D([0], [0], color=YELLOW, lw=2, linestyle="--",
+               label="Hydrogen bond"),
+    ]
+    ax.legend(handles=legend_handles, loc="lower left",
+              bbox_to_anchor=(0.0, -0.16), ncol=2, frameon=False,
+              fontsize=8.5, labelcolor=SUBTEXT, handletextpad=0.6)
+
+    fig.savefig(out_path, dpi=200, facecolor=BG, bbox_inches="tight")
     print(f"Saved -> {out_path}")
     if show:
         plt.show()
     plt.close(fig)
+
+
+# =============================================================================
+# main
+# =============================================================================
+
+def parse_args():
+    p = argparse.ArgumentParser(description="Generate professional QM/MM diagrams.")
+    p.add_argument("--out-dir", default="docs/images")
+    p.add_argument("--residue", default="Gln102")
+    p.add_argument("--ligand-label", default="Ligand")
+    p.add_argument("--distance", type=float, default=2.8)
+    p.add_argument("--delta-q", type=float, default=-0.028)
+    p.add_argument("--show", action="store_true")
+    return p.parse_args()
 
 
 def main():

@@ -33,11 +33,66 @@ ligand's most electronegative atom forming a hydrogen bond with a pocket
 residue, with its electron density measurably shifted by that environment —
 something only the quantum side of the calculation can show you.
 
+## Case study: the project behind this toolkit
+
+This toolkit wasn't written in the abstract — it's the generalized version of
+one specific calculation I ran, kept reusable so it works on any
+protein/ligand pair instead of just mine.
+
+**System:** [T4 Lysozyme L99A/M102Q](https://www.rcsb.org/structure/3HTB)
+(PDB [3HTB](https://www.rcsb.org/structure/3HTB)) bound to **JZ4**
+(2-propylphenol). T4 lysozyme L99A is an engineered, otherwise-hydrophobic
+cavity used as a standard model system for studying ligand binding; the
+M102Q mutation swaps in a single glutamine to give that cavity one polar
+"handle" — Gln102 — for a ligand to hydrogen-bond against.
+
+**Pipeline:** [CHARMM-GUI](https://charmm-gui.org/) for system prep →
+equilibration in [OpenMM](https://openmm.org/) → a QM/MM single-point in
+[ORCA](https://www.faccts.de/orca/) at B3LYP/def2-SVP+D3BJ, with the full
+22-atom JZ4 ligand as the QM region and the rest of the ~46,400-atom
+solvated protein (46,365 atoms) embedded as fixed classical point charges
+directly in the QM Hamiltonian.
+
+**Result:** final QM/MM energy **−424.8538 Hartree** (−11,560.8 eV). The
+ligand's hydroxyl oxygen — the atom that hydrogen-bonds to Gln102 — carries a
+Mulliken charge of **−0.20 e** in the protein environment, against the
+≈ **−0.54 e** fixed partial charge the CGenFF/SwissParam classical force
+field assigns that same atom. That **Δq ≈ +0.34 e** is the whole point of
+running QM/MM at all: a classical force field locks that atom's charge in
+place, but the real electron density redistributes by over a third of an
+electron once it's sitting in the protein, and only the quantum side of the
+calculation can see that happen. This is exactly the effect illustrated
+schematically above, and it's also literally what `sample_summary.png` in
+the next section is plotting — that figure is this calculation's real ORCA
+output, not a synthetic example.
+
+**What I learned:**
+*(draft — reword this in your own voice before publishing)*
+- Getting one molecule to survive the handoff between three different tools
+  — CHARMM-GUI's topology, OpenMM's equilibration, and ORCA's input format —
+  was harder than the QM/MM physics itself; most of the debugging time went
+  into file-format and atom-indexing mismatches, not chemistry.
+- A QM/MM energy is meaningless as a single number — it only becomes
+  interpretable as a *difference* (e.g. against a gas-phase or
+  unembedded run), which is why `visualize_results.py` is built around
+  comparisons rather than single values.
+- Mulliken charges are basis-set-dependent and not a rigorous observable,
+  but they're still the cheapest way to see polarization directly — and
+  the ≈0.34 e shift here was a clear, visible confirmation that the
+  point-charge embedding was actually doing something physically real,
+  not just running without errors.
+- Concretely, this is what a fixed-charge force field structurally cannot
+  capture: Gln102 existing right next to JZ4's hydroxyl changes that atom's
+  electron density in a way no MM charge set, however well-parameterized,
+  is allowed to respond to.
+
 ## Real output, visualized
 
 Both figures below are generated directly by `visualize_results.py` from
-real (anonymized) ORCA output included in `examples/sample_output/` —
-nothing here is mocked up.
+real ORCA output included in `examples/sample_output/` — nothing here is
+mocked up. The summary figure is the actual JZ4/3HTB run described above;
+the comparison figure is a second, separate real calculation used to
+demonstrate the environment-vs-gas-phase comparison feature.
 
 **Energy + Mulliken charge summary** for a single QM/MM run — energy in all
 three units quantum chemists use, plus a sorted bar chart of every atom's
