@@ -1,0 +1,25 @@
+# QM/MM run output (large, machine-specific, regenerate by running the scripts)
+qmmm_output/
+*.gbw
+*.densities
+*.densitiesinfo
+*.pc
+*.tmp
+*.engrad
+
+# CHARMM-GUI build output (large, system-specific — see docs/workflow.md to regenerate)
+charmm-gui-*/
+
+# User's own local config (keep config.yaml.example tracked, not your real one)
+config.yaml
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS / editor cruft
+.DS_Store
+*.swp
+*Zone.Identifier

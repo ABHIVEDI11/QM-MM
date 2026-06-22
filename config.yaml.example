@@ -1,0 +1,93 @@
+# =============================================================================
+# QM/MM Toolkit — System Configuration
+# =============================================================================
+# Edit THIS file to point the toolkit at your own protein-ligand system.
+# Nothing in scripts/ should need to change between projects — only this file.
+#
+# This config works for any CHARMM-GUI-prepared system: just fill in the
+# paths and ligand info for whatever protein/drug you are studying.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. PATHS — where CHARMM-GUI put your files
+# -----------------------------------------------------------------------------
+paths:
+  # Root folder CHARMM-GUI generated (the "charmm-gui-XXXXXXXX" folder)
+  charmm_gui_dir: "./charmm-gui-output"
+
+  # The openmm/ subfolder inside it
+  openmm_dir: "./charmm-gui-output/openmm"
+
+  # Topology file (full atom/bond/charge description) — never changes name
+  psf_file: "${openmm_dir}/step3_input.psf"
+
+  # Equilibrated coordinates — MUST be the post-equilibration PDB, never the
+  # raw step3_input.pdb (that one still has water on a grid, not real liquid)
+  pdb_file: "${openmm_dir}/step4_equilibration.pdb"
+
+  # Master CHARMM parameter stream file
+  toppar_str: "${openmm_dir}/toppar.str"
+
+  # Folder containing the individual CHARMM36 parameter files
+  toppar_dir: "${charmm_gui_dir}/toppar"
+
+  # Ligand-specific topology/parameter files (from CGenFF / SwissParam)
+  # Update "ligand" to match your ligand's folder/residue name
+  ligand_rtf: "${charmm_gui_dir}/ligand/ligand.rtf"
+  ligand_prm: "${charmm_gui_dir}/ligand/ligand.prm"
+
+# -----------------------------------------------------------------------------
+# 2. LIGAND / DRUG SETTINGS — the molecule you want in the QM region
+# -----------------------------------------------------------------------------
+ligand:
+  # Residue name exactly as it appears in your PDB/PSF (check with:
+  #   grep HETATM step3_input.pdb | head
+  # and read column 4)
+  resname: "LIG"
+
+  # Net formal charge at your simulation pH. Look this up — don't guess.
+  # Common neutral organics: 0. Protonated amines: +1. Carboxylates: -1.
+  charge: 0
+
+  # Spin multiplicity. 1 = closed shell / all electrons paired (the vast
+  # majority of drug-like molecules). Only change this if you know your
+  # ligand has unpaired electrons (e.g. some metal complexes, radicals).
+  multiplicity: 1
+
+# -----------------------------------------------------------------------------
+# 3. QM REGION SETTINGS
+# -----------------------------------------------------------------------------
+qm_region:
+  # If false: QM region = ligand only.
+  # If true: also pull in any protein/water residues within expand_cutoff_angstrom
+  #          of the ligand (useful for explicitly including a key H-bonding
+  #          residue inside the quantum region instead of treating it as MM).
+  expand_to_nearby_residues: false
+  expand_cutoff_angstrom: 5.0
+
+# -----------------------------------------------------------------------------
+# 4. QM METHOD (passed straight to ORCA)
+# -----------------------------------------------------------------------------
+qm_method:
+  # Increasing cost / accuracy, left to right:
+  #   "HF STO-3G"            -> fastest, ~2 min, sanity-check only
+  #   "B3LYP def2-SVP"       -> fast, good for teaching / first pass
+  #   "B3LYP def2-SVP D3BJ"  -> recommended default (adds dispersion)
+  #   "wB97X-D3 def2-TZVP"   -> publication quality, much slower
+  method: "B3LYP def2-SVP D3BJ"
+  cores: 4          # number of CPU cores for ORCA
+  ram_mb_per_core: 4000
+
+# -----------------------------------------------------------------------------
+# 5. ORCA EXECUTABLE
+# -----------------------------------------------------------------------------
+orca:
+  # Path to the orca binary. If left as "orca", the toolkit will search your
+  # PATH and a few common install locations automatically.
+  path: "orca"
+
+# -----------------------------------------------------------------------------
+# 6. OUTPUT
+# -----------------------------------------------------------------------------
+output:
+  dir: "./qmmm_output"
