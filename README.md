@@ -35,10 +35,6 @@ something only the quantum side of the calculation can show you.
 
 ## Case study: the project behind this toolkit
 
-I didn't build this toolkit in the abstract. It's the general, reusable
-version of one real calculation I ran, cleaned up so the same code works on
-any protein and ligand, not just mine.
-
 **System:** T4 Lysozyme L99A/M102Q (PDB
 [3HTB](https://www.rcsb.org/structure/3HTB)), bound to **JZ4**
 (2-propylphenol). T4 lysozyme L99A has an engineered hydrophobic pocket and
@@ -69,7 +65,7 @@ plotting below. That figure is the real output of this calculation, not a
 made up example.
 
 **What I learned:**
-*(draft, reword this in your own voice before publishing)*
+
 - Getting one molecule through three different tools, CHARMM-GUI's topology
   format, OpenMM's equilibration, and ORCA's input format, was harder than
   the actual QM/MM physics. Most of my debugging time went into file format
